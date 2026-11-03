@@ -463,6 +463,30 @@ fn option_key_settings_are_only_shown_on_macos(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn notification_toggles_preserve_choices_when_the_master_is_off(cx: &mut TestAppContext) {
+    cx.update(gpui_shell::init);
+    let staged = Staged::new();
+    let mut p = props();
+    p["section"] = json!("alerts");
+    let tree = describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), Some(r#"
+      const toggle = this.toggle;
+      const controls = {};
+      this.toggle = function(t, id, on, click) { controls[id] = { on, click }; return toggle.call(this, t, id, on, click); };
+      this.render(cx);
+      controls["st-notifications-done"].click();
+      controls["st-notifications-enabled"].click();
+      this.render(cx);
+      if (controls["st-notifications-enabled"].on || controls["st-notifications-done"].on) throw new Error("Master lost choices");
+      controls["st-notifications-errors"].click();
+      controls["st-notifications-enabled"].click();
+      this.render(cx);
+      if (!controls["st-notifications-enabled"].on || controls["st-notifications-done"].on || controls["st-notifications-errors"].on) throw new Error("Toggles lost choices");
+      this.toggle = toggle;
+    "#)).unwrap();
+    assert!(tree.contains("st-notifications-enabled"), "{tree}");
+}
+
+#[gpui::test]
 fn settings_sections_and_updates(cx: &mut TestAppContext) {
     cx.update(gpui_shell::init);
     let start = Instant::now();
@@ -470,7 +494,12 @@ fn settings_sections_and_updates(cx: &mut TestAppContext) {
     for section in ["look", "alerts", "privacy", "updates"] {
         let mut p = props();
         p["section"] = json!(section);
-        describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), None).unwrap();
+        let tree = describe(cx, &staged, "frame/settings", true, p, updates("current", "current"), None).unwrap();
+        if section == "alerts" {
+            for key in ["enabled", "blocked", "done", "errors", "other"] {
+                assert!(tree.contains(&format!("st-notifications-{key}")), "{tree}");
+            }
+        }
     }
     for app in ["source", "current", "ready"] {
         for core in ["current", "ready", "error", "managed", "updating"] {
